@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { buildApiUrl } from "./apiUrl";
 import { formatAssignmentDeadline } from "./deadline";
 import { ReviewPanel } from "./ReviewPanel";
 import type { MeetingDetail, MeetingListItem, ProcessingRun, ResultCandidate, ReviewRequest } from "./types";
@@ -15,7 +16,7 @@ async function apiFetch(path: string, init?: RequestInit, token?: string) {
   if (!(init?.body instanceof FormData)) headers.set("content-type", "application/json");
   if (token) headers.set("authorization", `Bearer ${token}`);
 
-  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  const response = await fetch(buildApiUrl(API_BASE_URL, path), { ...init, headers });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
     throw new Error(typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`);

@@ -1,5 +1,6 @@
 import { jsx as _jsx, jsxs as _jsxs } from "react/jsx-runtime";
 import { useEffect, useMemo, useState } from "react";
+import { buildApiUrl } from "./apiUrl";
 import { formatAssignmentDeadline } from "./deadline";
 import { ReviewPanel } from "./ReviewPanel";
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
@@ -9,7 +10,7 @@ async function apiFetch(path, init, token) {
         headers.set("content-type", "application/json");
     if (token)
         headers.set("authorization", `Bearer ${token}`);
-    const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+    const response = await fetch(buildApiUrl(API_BASE_URL, path), { ...init, headers });
     if (!response.ok) {
         const payload = await response.json().catch(() => ({}));
         throw new Error(typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`);
