@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import { appEnv } from "../../config/env.js";
-import { aiResultSchema, type AiResult } from "./schema.js";
+import { aiResultJsonSchema, aiResultSchema, type AiResult } from "./schema.js";
 
 export async function runAiExtraction(input: {
   materialId: string;
@@ -17,9 +17,12 @@ export async function runAiExtraction(input: {
 
   const prompt = [
     "Ты извлекаешь только факты из текста встречи.",
-    "Верни JSON строго по schemaVersion 1.0.",
+    "Классифицируй каждый подтверждённый пункт как решение, поручение, вопрос или информацию.",
     "Если исполнитель или срок неизвестны — верни null.",
+    "needsReview должен быть true, если исполнитель, дата или время требуют уточнения.",
     "Не придумывай пункты без подтверждающей цитаты.",
+    "Для каждого пункта верни минимум одну evidence с точной цитатой из материала.",
+    "startOffset и endOffset верни как null, если точные позиции не вычислены.",
     `materialId: ${input.materialId}`,
     `meetingDateIso: ${input.meetingDateIso ?? "null"}`,
     `timeZone: ${input.timeZone ?? "null"}`,
@@ -32,7 +35,15 @@ export async function runAiExtraction(input: {
   const response = await client.chat.completions.create({
     model: selectedModel,
     temperature: 0,
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "ai_da_secretary_result",
+        description: "Validated stage 1 extraction result for a meeting material",
+        strict: true,
+        schema: aiResultJsonSchema
+      }
+    },
     messages: [
       { role: "system", content: "Ты аккуратный аналитик встреч." },
       { role: "user", content: prompt }

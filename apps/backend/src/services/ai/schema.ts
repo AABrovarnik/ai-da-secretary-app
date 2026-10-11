@@ -38,3 +38,74 @@ export const aiResultSchema = z.object({
 });
 
 export type AiResult = z.infer<typeof aiResultSchema>;
+
+const evidenceJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["materialId", "quote", "startOffset", "endOffset"],
+  properties: {
+    materialId: { type: "string" },
+    quote: { type: "string" },
+    startOffset: { type: ["integer", "null"] },
+    endOffset: { type: ["integer", "null"] }
+  }
+} as const;
+
+const textPointJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["text", "evidence"],
+  properties: {
+    text: { type: "string" },
+    evidence: { type: "array", items: evidenceJsonSchema }
+  }
+} as const;
+
+export const aiResultJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["schemaVersion", "summary", "decisions", "assignments", "questions", "information"],
+  properties: {
+    schemaVersion: { type: "string", enum: ["1.0"] },
+    summary: { type: "string" },
+    decisions: {
+      type: "array",
+      items: textPointJsonSchema
+    },
+    assignments: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "description",
+          "assigneeName",
+          "dueDate",
+          "dueTime",
+          "timeZone",
+          "dueDateRaw",
+          "needsReview",
+          "evidence"
+        ],
+        properties: {
+          description: { type: "string" },
+          assigneeName: { type: ["string", "null"] },
+          dueDate: { type: ["string", "null"] },
+          dueTime: { type: ["string", "null"] },
+          timeZone: { type: ["string", "null"] },
+          dueDateRaw: { type: ["string", "null"] },
+          needsReview: { type: "boolean" },
+          evidence: { type: "array", items: evidenceJsonSchema }
+        }
+      }
+    },
+    questions: {
+      type: "array",
+      items: textPointJsonSchema
+    },
+    information: {
+      type: "array",
+      items: textPointJsonSchema
+    }
+  }
+} as const;
