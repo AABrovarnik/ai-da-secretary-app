@@ -146,6 +146,8 @@ model Assignment {
   description    String
   assigneeName   String?
   dueDate        DateTime?
+  dueTime        String?
+  timeZone       String?
   dueDateRaw     String?
   status         AssignmentStatus @default(new)
   sourceQuote    String?

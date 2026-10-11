@@ -1,4 +1,5 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { formatAssignmentDeadline } from "./deadline";
 import { ReviewPanel } from "./ReviewPanel";
 import type { MeetingDetail, MeetingListItem, ProcessingRun, ResultCandidate, ReviewRequest } from "./types";
 
@@ -293,7 +294,7 @@ export function App() {
                 <h2>Подтверждённые результаты</h2>
                 <div className="confirmed-grid">
                   <div><h3>Решения</h3><ul className="confirmed-list">{meetingDetail.decisions.map((item) => <li key={item.id}>{item.text}{item.sourceQuote && <div className="source-note">«{item.sourceQuote}»</div>}</li>)}</ul></div>
-                  <div><h3>Поручения</h3><ul className="confirmed-list">{meetingDetail.assignments.map((item) => <li key={item.id}>{item.description} · {item.assigneeName ?? "исполнитель не указан"} · {item.dueDateRaw ?? item.dueDate?.slice(0, 10) ?? "без срока"}<div className="source-note">Статус: {item.status}</div></li>)}</ul></div>
+                  <div><h3>Поручения</h3><ul className="confirmed-list">{meetingDetail.assignments.map((item) => <li key={item.id}>{item.description} · {item.assigneeName ?? "исполнитель не указан"} · {formatAssignmentDeadline(item)}<div className="source-note">Статус: {item.status}</div></li>)}</ul></div>
                 </div>
               </section>
             )}

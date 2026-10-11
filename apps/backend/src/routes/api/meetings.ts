@@ -11,7 +11,7 @@ import { prisma } from "../../services/db.js";
 import { runAiExtraction } from "../../services/ai/openaiAdapter.js";
 import { transcribeAudioFile } from "../../services/asr/openaiAsr.js";
 import {
-  assignmentDueDate,
+  buildAssignmentCreateData,
   buildReviewedPayload,
   candidateReviewRequestSchema
 } from "../../services/review/schema.js";
@@ -475,14 +475,7 @@ meetingsApiRouter.put("/:meetingId/candidates/:candidateId/review", async (req, 
 
       if (approvedAssignments.length > 0) {
         await transaction.assignment.createMany({
-          data: approvedAssignments.map((item) => ({
-            meetingId: candidate.meetingId,
-            description: item.description,
-            assigneeName: item.assigneeName,
-            dueDate: assignmentDueDate(item.dueDate),
-            dueDateRaw: item.dueDateRaw,
-            sourceQuote: item.evidence[0]?.quote ?? null
-          }))
+          data: approvedAssignments.map((item) => buildAssignmentCreateData(candidate.meetingId, item))
         });
       }
 

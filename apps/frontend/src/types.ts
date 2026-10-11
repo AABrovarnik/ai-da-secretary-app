@@ -94,6 +94,8 @@ export type MeetingDetail = MeetingListItem & {
     description: string;
     assigneeName: string | null;
     dueDate: string | null;
+    dueTime: string | null;
+    timeZone: string | null;
     dueDateRaw: string | null;
     status: "new" | "in_progress" | "done" | "cancelled";
     sourceQuote: string | null;

@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-11
+- Fixed reviewed assignment deadlines: `dueTime` and `timeZone` now persist in `Assignment`, and confirmed results prefer the reviewed normalized deadline over stale AI `dueDateRaw` text.
 - Added the Stage 1 review workflow:
   - editable AI candidate screen with per-item approve/reject actions;
   - transactional creation of approved decisions and assignments;

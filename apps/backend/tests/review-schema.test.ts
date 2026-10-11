@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   assignmentDueDate,
+  buildAssignmentCreateData,
   buildReviewedPayload,
   candidateReviewRequestSchema
 } from "../src/services/review/schema.js";
@@ -45,5 +46,35 @@ describe("candidate review contract", () => {
   it("stores a date-only deadline deterministically", () => {
     expect(assignmentDueDate("2026-10-15")?.toISOString()).toBe("2026-10-15T00:00:00.000Z");
     expect(assignmentDueDate(null)).toBeNull();
+  });
+
+  it("maps every reviewed deadline field into the confirmed assignment", () => {
+    const review = candidateReviewRequestSchema.parse({
+      summary: "Итоги",
+      decisions: [],
+      assignments: [
+        {
+          action: "approve",
+          description: "Подготовить отчёт",
+          assigneeName: "Ирина",
+          dueDate: "2026-10-20",
+          dueTime: "14:30",
+          timeZone: "Europe/Moscow",
+          dueDateRaw: "до пятницы",
+          needsReview: false,
+          evidence: [evidence]
+        }
+      ],
+      questions: [],
+      information: []
+    });
+
+    expect(buildAssignmentCreateData("meeting-1", review.assignments[0])).toMatchObject({
+      meetingId: "meeting-1",
+      dueDate: new Date("2026-10-20T00:00:00.000Z"),
+      dueTime: "14:30",
+      timeZone: "Europe/Moscow",
+      dueDateRaw: "до пятницы"
+    });
   });
 });

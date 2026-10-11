@@ -64,3 +64,19 @@ export function buildReviewedPayload(review: CandidateReviewRequest) {
 export function assignmentDueDate(value: string | null) {
   return value ? new Date(`${value}T00:00:00.000Z`) : null;
 }
+
+export function buildAssignmentCreateData(
+  meetingId: string,
+  item: CandidateReviewRequest["assignments"][number]
+) {
+  return {
+    meetingId,
+    description: item.description,
+    assigneeName: item.assigneeName,
+    dueDate: assignmentDueDate(item.dueDate),
+    dueTime: item.dueTime,
+    timeZone: item.timeZone,
+    dueDateRaw: item.dueDateRaw,
+    sourceQuote: item.evidence[0]?.quote ?? null
+  };
+}
