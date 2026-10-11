@@ -7,8 +7,8 @@
 - 1.1 Каркас, БД, актуальный контекст: **done**
 - 1.2 Текстовый конвейер + реальный LLM: **in progress (foundation implemented)**
 - 1.3 Аудио ASR + очередь: **in progress (audio upload + ASR foundation added)**
-- 1.4 UI встреч и черновиков: in progress (базовый UI есть, полноценный review-screen нет)
-- 1.5 Проверка/подтверждение и история изменений: not started
+- 1.4 UI встреч и черновиков: **done**
+- 1.5 Проверка/подтверждение и история изменений: **in progress (review foundation implemented)**
 - 1.6 Приёмка M-01…M-16: not started
 
 ## Реализовано
@@ -21,6 +21,10 @@
 - LLM adapter (OpenAI) на backend + Zod-валидация schema 1.0.
 - Добавлен optional model override на уровне processing run (текст/аудио) при сохранении default `OPENAI_MODEL`.
 - ASR adapter (OpenAI transcription) с сохранением транскрипции в `Material.contentText`.
+- Review-screen для редактирования и индивидуального approve/reject решений, поручений, вопросов и информации.
+- Транзакционное подтверждение кандидата: создаются только одобренные `Decision` и `Assignment`, записывается `CandidateHistory`.
+- Проверка evidence на принадлежность материалам той же встречи и защита от повторного review (`409`).
+- Архив проверенных кандидатов и просмотр подтверждённых результатов встречи.
 - Без ключа AI/ASR возвращается честная ошибка, без фиктивного результата.
 
 ## Проверки (факт)
@@ -33,7 +37,9 @@
 
 ## Блокеры/открытые пункты
 - `npm run db:migrate` требует локально доступный PostgreSQL; в текущем окружении миграция на пустую БД не подтверждена.
-- Полные M-критерии (особенно review/approve flow, security hardening, E2E) ещё не закрыты.
+- Runtime E2E нового review/approve flow и его ownership/duplicate-review проверок ещё не выполнен.
+- Assignment lifecycle после подтверждения (статусы выполнения и журнал действий) ещё не реализован.
+- Полные M-критерии и security hardening ещё не закрыты.
 
 ## Тестовый контур
 - `docs/TEST_CONTOUR.md` описывает ручной UI прогон и smoke-скрипт.
@@ -45,4 +51,4 @@
 - `https://sandbox.вишня01.рф/` опубликован через отдельный Nginx vhost с валидным TLS-сертификатом.
 - На runtime host подтверждены frontend `HTTP 200` и backend `/health` со статусом `ok`, включая readiness PostgreSQL.
 - Backend runtime стабилизирован: Debian/OpenSSL-совместимый Prisma engine, корректный compiled entrypoint и ESM-совместимый импорт `bcryptjs`.
-- Текущий серверный запуск использует временные локальные image tags; следующий обязательный шаг — immutable GHCR images из проверенного commit и повторная runtime acceptance.
+- Sandbox работает на immutable GHCR images; следующий обязательный шаг — выпустить образы review-итерации и выполнить runtime E2E.

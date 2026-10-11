@@ -1,6 +1,11 @@
 # Changelog
 
 ## 2026-10-11
+- Added the Stage 1 review workflow:
+  - editable AI candidate screen with per-item approve/reject actions;
+  - transactional creation of approved decisions and assignments;
+  - evidence ownership validation, review history and duplicate-review protection;
+  - confirmed-results view and reviewed-candidate archive.
 - Stabilized the backend container runtime on the sandbox host:
   - switched backend build/runtime images to `node:20-bookworm-slim`;
   - installed OpenSSL CA/runtime packages for Prisma;

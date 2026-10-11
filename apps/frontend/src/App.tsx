@@ -1,49 +1,25 @@
-import { ChangeEvent, FormEvent, useMemo, useState } from "react";
+import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
+import { ReviewPanel } from "./ReviewPanel";
+import type { MeetingDetail, MeetingListItem, ProcessingRun, ResultCandidate, ReviewRequest } from "./types";
 
 type LoginResponse = {
   accessToken: string;
   user: { id: string; email: string; displayName: string | null };
 };
 
-type Meeting = {
-  id: string;
-  title: string;
-};
-
-type ProcessingRun = {
-  id: string;
-  status: string;
-  errorMessage: string | null;
-  resultCandidates: Array<{ id: string; summary: string }>;
-};
-
 const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "http://localhost:4000";
 
 async function apiFetch(path: string, init?: RequestInit, token?: string) {
   const headers = new Headers(init?.headers ?? {});
-  if (!(init?.body instanceof FormData)) {
-    headers.set("content-type", "application/json");
-  }
+  if (!(init?.body instanceof FormData)) headers.set("content-type", "application/json");
+  if (token) headers.set("authorization", `Bearer ${token}`);
 
-  if (token) {
-    headers.set("authorization", `Bearer ${token}`);
-  }
-
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers
-  });
-
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({}));
-    throw new Error(payload.error ?? `HTTP ${response.status}`);
+    throw new Error(typeof payload.error === "string" ? payload.error : `HTTP ${response.status}`);
   }
-
-  if (response.status === 204) {
-    return null;
-  }
-
-  return response.json();
+  return response.status === 204 ? null : response.json();
 }
 
 export function App() {
@@ -54,288 +30,296 @@ export function App() {
   const [materialText, setMaterialText] = useState("Согласовали обновить FAQ. Ирина готовит черновик до пятницы.");
   const [modelOverride, setModelOverride] = useState("");
   const [audioFile, setAudioFile] = useState<File | null>(null);
-  const [meetings, setMeetings] = useState<Meeting[]>([]);
+  const [meetings, setMeetings] = useState<MeetingListItem[]>([]);
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
+  const [meetingDetail, setMeetingDetail] = useState<MeetingDetail | null>(null);
   const [run, setRun] = useState<ProcessingRun | null>(null);
-  const [message, setMessage] = useState<string>("");
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  const isAuthed = Boolean(accessToken);
   const selectedMeeting = useMemo(
     () => meetings.find((item) => item.id === selectedMeetingId) ?? null,
     [meetings, selectedMeetingId]
   );
 
-  const refreshMeetings = async () => {
-    if (!accessToken) {
-      return;
+  const pendingCandidate = useMemo<ResultCandidate | null>(() => {
+    if (!meetingDetail) return null;
+    for (const processingRun of meetingDetail.processingRuns) {
+      const candidate = processingRun.resultCandidates.find((item) => item.reviewStatus === "pending");
+      if (candidate) return candidate;
     }
-    const response = await apiFetch("/api/meetings", {}, accessToken);
-    setMeetings(response.items);
-    if (!selectedMeetingId && response.items[0]) {
-      setSelectedMeetingId(response.items[0].id);
+    return null;
+  }, [meetingDetail]);
+
+  const loadMeeting = async (meetingId: string, token = accessToken) => {
+    if (!token) return;
+    const response = await apiFetch(`/api/meetings/${meetingId}`, {}, token);
+    setMeetingDetail(response.item as MeetingDetail);
+  };
+
+  const refreshMeetings = async (token = accessToken, preferredMeetingId?: string) => {
+    if (!token) return;
+    const response = await apiFetch("/api/meetings", {}, token);
+    const items = response.items as MeetingListItem[];
+    setMeetings(items);
+    const nextId = preferredMeetingId ?? selectedMeetingId ?? items[0]?.id ?? null;
+    setSelectedMeetingId(nextId);
+    if (nextId) await loadMeeting(nextId, token);
+  };
+
+  useEffect(() => {
+    if (accessToken && selectedMeetingId) void loadMeeting(selectedMeetingId);
+  }, [accessToken, selectedMeetingId]);
+
+  const withBusy = async (action: () => Promise<void>) => {
+    setBusy(true);
+    try {
+      await action();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Неизвестная ошибка");
+    } finally {
+      setBusy(false);
     }
   };
 
-  const handleRegister = async (event: FormEvent) => {
-    event.preventDefault();
-    try {
+  const register = () => {
+    void withBusy(async () => {
       await apiFetch("/api/auth/register", {
         method: "POST",
         body: JSON.stringify({ email, password, displayName: "Demo User" })
       });
       setMessage("Пользователь создан. Теперь войдите.");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка регистрации");
-    }
+    });
   };
 
-  const handleLogin = async (event: FormEvent) => {
+  const login = (event: FormEvent) => {
     event.preventDefault();
-    try {
+    void withBusy(async () => {
       const data = (await apiFetch("/api/auth/login", {
         method: "POST",
         body: JSON.stringify({ email, password })
       })) as LoginResponse;
       setAccessToken(data.accessToken);
       setMessage(`Вход выполнен: ${data.user.email}`);
-      await refreshMeetings();
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка входа");
-    }
+      await refreshMeetings(data.accessToken);
+    });
   };
 
-  const handleCreateMeeting = async (event: FormEvent) => {
-    event.preventDefault();
-    if (!accessToken) {
-      return;
-    }
+  const logout = () => {
+    if (!accessToken) return;
+    void withBusy(async () => {
+      await apiFetch("/api/auth/logout", { method: "POST" }, accessToken);
+      setAccessToken(null);
+      setMeetings([]);
+      setMeetingDetail(null);
+      setSelectedMeetingId(null);
+      setRun(null);
+      setMessage("Вы вышли из аккаунта");
+    });
+  };
 
-    try {
+  const createMeeting = (event: FormEvent) => {
+    event.preventDefault();
+    if (!accessToken) return;
+    void withBusy(async () => {
       const response = await apiFetch(
         "/api/meetings",
-        {
-          method: "POST",
-          body: JSON.stringify({ title: meetingTitle, timeZone: "Europe/Moscow" })
-        },
+        { method: "POST", body: JSON.stringify({ title: meetingTitle, timeZone: "Europe/Moscow" }) },
         accessToken
       );
-
-      setSelectedMeetingId(response.item.id);
-      await refreshMeetings();
+      await refreshMeetings(accessToken, response.item.id);
+      await loadMeeting(response.item.id, accessToken);
       setMessage("Встреча создана");
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка создания встречи");
-    }
+    });
   };
 
   const pollRun = async (runId: string) => {
-    if (!accessToken) {
-      return;
-    }
-
+    if (!accessToken) return;
     let lastRun: ProcessingRun | null = null;
-    for (let index = 0; index < 30; index += 1) {
+    for (let index = 0; index < 120; index += 1) {
       await new Promise((resolve) => setTimeout(resolve, 1000));
-      const statusResp = await apiFetch(`/api/meetings/processing/${runId}`, {}, accessToken);
-      lastRun = statusResp.item as ProcessingRun;
+      const response = await apiFetch(`/api/meetings/processing/${runId}`, {}, accessToken);
+      lastRun = response.item as ProcessingRun;
       setRun(lastRun);
-      if (["succeeded", "failed", "cancelled"].includes(lastRun.status)) {
-        break;
-      }
+      if (["succeeded", "failed", "cancelled"].includes(lastRun.status)) break;
     }
-
-    if (lastRun?.status === "failed") {
-      setMessage(`Обработка завершилась ошибкой: ${lastRun.errorMessage ?? "unknown"}`);
-    } else if (lastRun?.status === "succeeded") {
-      setMessage("Обработка завершена успешно");
+    if (lastRun?.status === "failed") throw new Error(`Обработка завершилась ошибкой: ${lastRun.errorMessage ?? "unknown"}`);
+    if (lastRun?.status === "succeeded" && selectedMeetingId) {
+      await loadMeeting(selectedMeetingId, accessToken);
+      setMessage("Обработка завершена. Проверьте найденные пункты.");
     }
   };
 
-  const buildProcessRunBody = () => {
-    const trimmed = modelOverride.trim();
-    return trimmed.length > 0 ? { modelOverride: trimmed } : {};
+  const processBody = () => {
+    const model = modelOverride.trim();
+    return model ? { modelOverride: model } : {};
   };
 
-  const handleProcessText = async (event: FormEvent) => {
+  const processText = (event: FormEvent) => {
     event.preventDefault();
-    if (!accessToken || !selectedMeetingId) {
-      return;
-    }
-
-    try {
+    if (!accessToken || !selectedMeetingId) return;
+    void withBusy(async () => {
       await apiFetch(
         `/api/meetings/${selectedMeetingId}/materials/text`,
-        {
-          method: "POST",
-          body: JSON.stringify({ contentText: materialText, kind: "note" })
-        },
+        { method: "POST", body: JSON.stringify({ contentText: materialText, kind: "note" }) },
         accessToken
       );
-
-      const runStart = await apiFetch(
+      const started = await apiFetch(
         `/api/meetings/${selectedMeetingId}/process-latest-text`,
-        {
-          method: "POST",
-          body: JSON.stringify(buildProcessRunBody())
-        },
+        { method: "POST", body: JSON.stringify(processBody()) },
         accessToken
       );
-
-      setMessage(`Text run запущен: ${runStart.runId}`);
-      await pollRun(runStart.runId);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка обработки текста");
-    }
+      setMessage("Обрабатываем текст…");
+      await pollRun(started.runId);
+    });
   };
 
-  const handleUploadAudio = async (event: FormEvent) => {
+  const uploadAudio = (event: FormEvent) => {
     event.preventDefault();
-    if (!accessToken || !selectedMeetingId || !audioFile) {
-      return;
-    }
-
-    try {
+    if (!accessToken || !selectedMeetingId || !audioFile) return;
+    void withBusy(async () => {
       const formData = new FormData();
       formData.set("audio", audioFile);
-
-      await apiFetch(
-        `/api/meetings/${selectedMeetingId}/materials/audio`,
-        {
-          method: "POST",
-          body: formData
-        },
-        accessToken
-      );
-
+      await apiFetch(`/api/meetings/${selectedMeetingId}/materials/audio`, { method: "POST", body: formData }, accessToken);
+      await loadMeeting(selectedMeetingId, accessToken);
       setMessage(`Аудио загружено: ${audioFile.name}`);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка загрузки аудио");
-    }
+    });
   };
 
-  const handleProcessAudio = async () => {
-    if (!accessToken || !selectedMeetingId) {
-      return;
-    }
-
-    try {
-      const runStart = await apiFetch(
+  const processAudio = () => {
+    if (!accessToken || !selectedMeetingId) return;
+    void withBusy(async () => {
+      const started = await apiFetch(
         `/api/meetings/${selectedMeetingId}/process-latest-audio`,
-        {
-          method: "POST",
-          body: JSON.stringify(buildProcessRunBody())
-        },
+        { method: "POST", body: JSON.stringify(processBody()) },
         accessToken
       );
-
-      setMessage(`Audio run запущен: ${runStart.runId}`);
-      await pollRun(runStart.runId);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Ошибка обработки аудио");
-    }
+      setMessage("Распознаём и анализируем аудио…");
+      await pollRun(started.runId);
+    });
   };
 
-  const handleAudioSelect = (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0] ?? null;
-    setAudioFile(file);
+  const reviewCandidate = async (review: ReviewRequest) => {
+    if (!accessToken || !selectedMeetingId || !pendingCandidate) return;
+    await withBusy(async () => {
+      const response = await apiFetch(
+        `/api/meetings/${selectedMeetingId}/candidates/${pendingCandidate.id}/review`,
+        { method: "PUT", body: JSON.stringify(review) },
+        accessToken
+      );
+      await loadMeeting(selectedMeetingId, accessToken);
+      setMessage(`Проверка сохранена: решений ${response.created.decisions}, поручений ${response.created.assignments}`);
+    });
   };
 
   return (
-    <main style={{ maxWidth: 860, margin: "24px auto", fontFamily: "Inter, sans-serif", padding: "0 12px" }}>
-      <h1>AI-да-Секретарь</h1>
-      <p>Тестовый контур: auth → meeting → model override → text/audio → processing run.</p>
+    <main className="app-shell">
+      <header className="app-header">
+        <div>
+          <p className="eyebrow">Stage 1 · человек подтверждает результат</p>
+          <h1>AI-да-Секретарь</h1>
+          <p>Материал встречи → AI-черновик → проверка → подтверждённые решения и поручения.</p>
+        </div>
+        {accessToken && <button className="secondary-button" type="button" onClick={logout} disabled={busy}>Выйти</button>}
+      </header>
 
-      <section style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-        <h2>1) Доступ</h2>
-        <form onSubmit={handleRegister} style={{ display: "grid", gap: 8, marginBottom: 8 }}>
-          <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" />
-          <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" type="password" />
-          <button type="submit">Регистрация</button>
-        </form>
-        <form onSubmit={handleLogin} style={{ display: "grid", gap: 8 }}>
-          <button type="submit">Войти</button>
-        </form>
-      </section>
+      {message && <p className="message" role="status">{message}</p>}
 
-      {isAuthed && (
-        <>
-          <section style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-            <h2>2) Встречи</h2>
-            <form onSubmit={handleCreateMeeting} style={{ display: "flex", gap: 8 }}>
-              <input
-                value={meetingTitle}
-                onChange={(event) => setMeetingTitle(event.target.value)}
-                placeholder="Название встречи"
-                style={{ flex: 1 }}
-              />
-              <button type="submit">Создать</button>
-              <button type="button" onClick={() => void refreshMeetings()}>
-                Обновить список
-              </button>
-            </form>
-            <ul>
-              {meetings.map((meeting) => (
-                <li key={meeting.id}>
-                  <button type="button" onClick={() => setSelectedMeetingId(meeting.id)}>
-                    {meeting.title}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            <p>Выбрана: {selectedMeeting?.title ?? "—"}</p>
-          </section>
+      {!accessToken ? (
+        <section className="panel stack auth-panel">
+          <h2>Вход</h2>
+          <form className="stack" onSubmit={login}>
+            <label>Email<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" /></label>
+            <label>Пароль<input value={password} onChange={(event) => setPassword(event.target.value)} type="password" /></label>
+            <div className="row">
+              <button className="secondary-button" type="button" onClick={register} disabled={busy}>Регистрация</button>
+              <button className="primary-button" type="submit" disabled={busy}>Войти</button>
+            </div>
+          </form>
+        </section>
+      ) : (
+        <div className="workspace">
+          <aside className="sidebar">
+            <section className="panel">
+              <h2>Встречи</h2>
+              <form className="stack" onSubmit={createMeeting}>
+                <input value={meetingTitle} onChange={(event) => setMeetingTitle(event.target.value)} placeholder="Название" />
+                <button className="primary-button" type="submit" disabled={busy}>Создать встречу</button>
+              </form>
+              <ul className="meeting-list">
+                {meetings.map((meeting) => (
+                  <li key={meeting.id}>
+                    <button type="button" className={meeting.id === selectedMeetingId ? "meeting-button active" : "meeting-button"} onClick={() => setSelectedMeetingId(meeting.id)}>{meeting.title}</button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section className="panel stack">
+              <h3>Модель</h3>
+              <p className="muted">Оставьте пустым для серверной модели по умолчанию.</p>
+              <input value={modelOverride} onChange={(event) => setModelOverride(event.target.value)} placeholder="Например, gpt-4o-mini" />
+            </section>
+          </aside>
 
-          <section style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-            <h2>3) Модель LLM (optional override)</h2>
-            <p style={{ marginTop: 0, color: "#555" }}>
-              Пусто = backend default (`OPENAI_MODEL`). Для конкретного run можно указать override, например `gpt-6-luna` или `gpt-6.1-sol`.
-            </p>
-            <input
-              value={modelOverride}
-              onChange={(event) => setModelOverride(event.target.value)}
-              placeholder="Опционально: gpt-6-luna / gpt-6.1-sol"
-              style={{ width: "100%" }}
-            />
-          </section>
+          <div className="content">
+            <section className="panel stack">
+              <div className="review-header">
+                <div><p className="eyebrow">Выбрана встреча</p><h2>{selectedMeeting?.title ?? "Выберите встречу"}</h2></div>
+                <button className="secondary-button" type="button" onClick={() => void refreshMeetings()} disabled={busy}>Обновить</button>
+              </div>
+              <form className="stack" onSubmit={processText}>
+                <label>Текст встречи<textarea value={materialText} onChange={(event) => setMaterialText(event.target.value)} rows={6} /></label>
+                <button className="primary-button" type="submit" disabled={busy || !selectedMeetingId}>Загрузить и обработать текст</button>
+              </form>
+              <form className="stack" onSubmit={uploadAudio}>
+                <label>Аудиофайл<input type="file" accept="audio/*,.ogg" onChange={(event: ChangeEvent<HTMLInputElement>) => setAudioFile(event.target.files?.[0] ?? null)} /></label>
+                <div className="row">
+                  <button className="secondary-button" type="submit" disabled={busy || !audioFile}>Загрузить аудио</button>
+                  <button className="primary-button" type="button" onClick={processAudio} disabled={busy || !selectedMeetingId}>Обработать последнее аудио</button>
+                </div>
+              </form>
+            </section>
 
-          <section style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-            <h2>4) Текст</h2>
-            <form onSubmit={handleProcessText} style={{ display: "grid", gap: 8 }}>
-              <textarea
-                value={materialText}
-                onChange={(event) => setMaterialText(event.target.value)}
-                rows={7}
-                placeholder="Текст встречи"
-              />
-              <button type="submit" disabled={!selectedMeetingId}>
-                Загрузить + обработать текст
-              </button>
-            </form>
-          </section>
+            {run && <section className="panel run-status"><strong>Последняя обработка</strong><span className={`status-badge ${run.status}`}>{run.status}</span></section>}
 
-          <section style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-            <h2>5) Аудио (.ogg)</h2>
-            <form onSubmit={handleUploadAudio} style={{ display: "grid", gap: 8 }}>
-              <input type="file" accept="audio/*,.ogg" onChange={handleAudioSelect} />
-              <button type="submit" disabled={!selectedMeetingId || !audioFile}>
-                Загрузить аудио
-              </button>
-            </form>
-            <button type="button" onClick={() => void handleProcessAudio()} disabled={!selectedMeetingId}>
-              Обработать последнее аудио
-            </button>
-          </section>
+            {pendingCandidate ? (
+              <ReviewPanel candidate={pendingCandidate} busy={busy} onSubmit={reviewCandidate} />
+            ) : (
+              <section className="panel empty-state">{meetingDetail ? "Нет черновиков, ожидающих проверки." : "Выберите встречу для просмотра результатов."}</section>
+            )}
 
-          <section style={{ border: "1px solid #ddd", padding: 12, borderRadius: 8, marginBottom: 12 }}>
-            <h2>6) Статус run</h2>
-            <pre style={{ whiteSpace: "pre-wrap", background: "#f7f7f7", padding: 8, borderRadius: 8 }}>
-              {run ? JSON.stringify(run, null, 2) : "Пока нет processing run"}
-            </pre>
-          </section>
-        </>
+            {meetingDetail && (meetingDetail.decisions.length > 0 || meetingDetail.assignments.length > 0) && (
+              <section className="panel">
+                <h2>Подтверждённые результаты</h2>
+                <div className="confirmed-grid">
+                  <div><h3>Решения</h3><ul className="confirmed-list">{meetingDetail.decisions.map((item) => <li key={item.id}>{item.text}{item.sourceQuote && <div className="source-note">«{item.sourceQuote}»</div>}</li>)}</ul></div>
+                  <div><h3>Поручения</h3><ul className="confirmed-list">{meetingDetail.assignments.map((item) => <li key={item.id}>{item.description} · {item.assigneeName ?? "исполнитель не указан"} · {item.dueDateRaw ?? item.dueDate?.slice(0, 10) ?? "без срока"}<div className="source-note">Статус: {item.status}</div></li>)}</ul></div>
+                </div>
+              </section>
+            )}
+
+            {meetingDetail?.processingRuns.some((item) => item.resultCandidates.some((candidate) => candidate.reviewStatus !== "pending")) && (
+              <section className="panel">
+                <h2>Архив проверок</h2>
+                <div className="archive-list">
+                  {meetingDetail.processingRuns.flatMap((item) => item.resultCandidates).filter((candidate) => candidate.reviewStatus !== "pending").map((candidate) => (
+                    <article className="archive-card" key={candidate.id}>
+                      <div className="review-header">
+                        <strong>{candidate.summary}</strong>
+                        <span className={`status-badge ${candidate.reviewStatus}`}>{candidate.reviewStatus}</span>
+                      </div>
+                      <p className="source-note">
+                        Решения: {candidate.payloadJson.decisions.length}; поручения: {candidate.payloadJson.assignments.length}; вопросы: {candidate.payloadJson.questions.length}; информация: {candidate.payloadJson.information.length}
+                      </p>
+                      {candidate.history?.[0] && <p className="source-note">{candidate.history[0].comment ?? "Проверено пользователем"}</p>}
+                    </article>
+                  ))}
+                </div>
+              </section>
+            )}
+          </div>
+        </div>
       )}
-
-      <p style={{ color: "#444" }}>{message}</p>
     </main>
   );
 }
