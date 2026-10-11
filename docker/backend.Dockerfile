@@ -1,5 +1,8 @@
-FROM node:20-alpine AS build
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY package.json package-lock.json ./
 COPY apps/backend/package.json apps/backend/package.json
@@ -12,9 +15,12 @@ COPY . .
 RUN npm run db:generate
 RUN npm --workspace apps/backend run build
 
-FROM node:20-alpine AS runtime
+FROM node:20-bookworm-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
+
+RUN apt-get update -y && apt-get install -y --no-install-recommends openssl ca-certificates \
+  && rm -rf /var/lib/apt/lists/*
 
 COPY --from=build /app /app
 

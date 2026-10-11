@@ -1,7 +1,7 @@
 # PROJECT_STATE
 
 ## Дата обновления
-2026-10-09
+2026-10-11
 
 ## Статус итераций Stage 1
 - 1.1 Каркас, БД, актуальный контекст: **done**
@@ -29,6 +29,8 @@
 - `npm run test` — passed.
 - `npm run build` — passed.
 
+Проверки повторно выполнены 2026-10-11 после стабилизации backend runtime. Первый запуск `test/build` в ограниченном Windows-процессе завершился `spawn EPERM`; повторный запуск вне sandbox прошёл успешно.
+
 ## Блокеры/открытые пункты
 - `npm run db:migrate` требует локально доступный PostgreSQL; в текущем окружении миграция на пустую БД не подтверждена.
 - Полные M-критерии (особенно review/approve flow, security hardening, E2E) ещё не закрыты.
@@ -40,4 +42,7 @@
 ## WEB-песочница (deployment focus)
 - Для sandbox-деплоя добавлены Dockerfiles и deploy/docker-compose.sandbox.yml.
 - Добавлен runbook: deploy/WEB_SANDBOX_DEPLOY.md.
-- По отчёту агента: DNS для sandbox уже резолвится, осталось настроить отдельный Nginx vhost + TLS-сертификат.
+- `https://sandbox.вишня01.рф/` опубликован через отдельный Nginx vhost с валидным TLS-сертификатом.
+- На runtime host подтверждены frontend `HTTP 200` и backend `/health` со статусом `ok`, включая readiness PostgreSQL.
+- Backend runtime стабилизирован: Debian/OpenSSL-совместимый Prisma engine, корректный compiled entrypoint и ESM-совместимый импорт `bcryptjs`.
+- Текущий серверный запуск использует временные локальные image tags; следующий обязательный шаг — immutable GHCR images из проверенного commit и повторная runtime acceptance.

@@ -1,10 +1,12 @@
 import { Router } from "express";
-import { compare, hash } from "bcryptjs";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "../../services/db.js";
 import { appEnv } from "../../config/env.js";
 import { generateAccessToken, hashToken } from "../../auth/tokens.js";
 import { requireAuth } from "../../middleware/auth.js";
+
+const { compare, hash } = bcrypt;
 
 const registerSchema = z.object({
   email: z.string().email(),

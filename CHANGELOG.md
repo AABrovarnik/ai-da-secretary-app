@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-10-11
+- Stabilized the backend container runtime on the sandbox host:
+  - switched backend build/runtime images to `node:20-bookworm-slim`;
+  - installed OpenSSL CA/runtime packages for Prisma;
+  - added Prisma `debian-openssl-3.0.x` binary target;
+  - corrected the compiled backend entrypoint to `dist/src/index.js`;
+  - changed `bcryptjs` consumption to an ESM-compatible default import.
+- Re-ran typecheck, lint, tests and production build successfully.
+- Confirmed the sandbox frontend and backend health after host restart.
+- Activated a dedicated HTTPS Nginx route for `sandbox.вишня01.рф` without changing the academy application route.
+
 ## 2026-10-09
 - Added manual model selection strategy: default `OPENAI_MODEL` with optional per-run `modelOverride` for text/audio processing.
 - Added sandbox deployment pack for web testing:
