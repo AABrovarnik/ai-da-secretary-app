@@ -1,0 +1,14 @@
+version: "3.9"
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: ai-da-secretary-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: secretary
+      POSTGRES_PASSWORD: secretary
+      POSTGRES_DB: aidasecretary
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./storage/local-data/postgres:/var/lib/postgresql/data

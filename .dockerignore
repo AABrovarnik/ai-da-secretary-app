@@ -1,0 +1,12 @@
+node_modules
+**/node_modules
+.git
+.gitignore
+.vscode
+.idea
+**/dist
+**/.vite
+**/coverage
+storage/audio
+storage/local-data
+npm-debug.log*

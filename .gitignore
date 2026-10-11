@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+.vite/
+playwright-report/
+test-results/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+
+# Runtime data
+storage/audio/*
+!storage/audio/.gitkeep
+storage/local-data/*
+!storage/local-data/.gitkeep
+*.log
+tmp/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+tmp.patch

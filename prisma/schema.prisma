@@ -1,0 +1,170 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProcessingRunStatus {
+  queued
+  running
+  succeeded
+  failed
+  cancelled
+}
+
+enum CandidateReviewStatus {
+  pending
+  approved
+  rejected
+}
+
+enum AssignmentStatus {
+  new
+  in_progress
+  done
+  cancelled
+}
+
+enum MaterialKind {
+  note
+  txt_upload
+  audio_upload
+}
+
+model User {
+  id           String     @id @default(cuid())
+  email        String     @unique
+  passwordHash String
+  displayName  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  sessions     Session[]
+  meetings     Meeting[]
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  userId       String
+  tokenHash    String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
+  revokedAt    DateTime?
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Meeting {
+  id            String               @id @default(cuid())
+  ownerUserId   String
+  title         String
+  meetingAt     DateTime?
+  timeZone      String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  owner         User                 @relation(fields: [ownerUserId], references: [id], onDelete: Restrict)
+  materials     Material[]
+  processingRuns ProcessingRun[]
+  decisions       Decision[]
+  assignments     Assignment[]
+  resultCandidates ResultCandidate[]
+
+  @@index([ownerUserId])
+  @@index([createdAt])
+}
+
+model Material {
+  id           String   @id @default(cuid())
+  meetingId    String
+  kind         MaterialKind
+  originalName String?
+  mimeType     String?
+  storagePath  String?
+  contentText  String?
+  byteSize     Int?
+  createdAt    DateTime @default(now())
+  meeting      Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+model ProcessingRun {
+  id          String               @id @default(cuid())
+  meetingId   String
+  status      ProcessingRunStatus  @default(queued)
+  provider    String?
+  model       String?
+  queuedAt    DateTime             @default(now())
+  startedAt   DateTime?
+  finishedAt  DateTime?
+  attempt     Int                  @default(0)
+  errorMessage String?
+  meeting     Meeting              @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  resultCandidates ResultCandidate[]
+
+  @@index([meetingId])
+  @@index([status])
+}
+
+model ResultCandidate {
+  id            String                @id @default(cuid())
+  meetingId     String
+  processingRunId String
+  schemaVersion String
+  summary       String
+  payloadJson   Json
+  reviewStatus  CandidateReviewStatus @default(pending)
+  createdAt     DateTime              @default(now())
+  reviewedAt    DateTime?
+  meeting       Meeting               @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  processingRun ProcessingRun         @relation(fields: [processingRunId], references: [id], onDelete: Cascade)
+  history       CandidateHistory[]
+
+  @@index([meetingId])
+  @@index([processingRunId])
+}
+
+model Decision {
+  id          String   @id @default(cuid())
+  meetingId   String
+  text        String
+  sourceQuote String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  meeting     Meeting  @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+}
+
+model Assignment {
+  id            String           @id @default(cuid())
+  meetingId      String
+  description    String
+  assigneeName   String?
+  dueDate        DateTime?
+  dueDateRaw     String?
+  status         AssignmentStatus @default(new)
+  sourceQuote    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  meeting        Meeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@index([meetingId])
+  @@index([status])
+}
+
+model CandidateHistory {
+  id              String                @id @default(cuid())
+  candidateId     String
+  actorUserId     String?
+  fromStatus      CandidateReviewStatus
+  toStatus        CandidateReviewStatus
+  comment         String?
+  changedAt       DateTime              @default(now())
+  candidate       ResultCandidate       @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@index([candidateId])
+}

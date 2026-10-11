@@ -1,0 +1,26 @@
+{
+  "name": "ai-da-secretary",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AI-да-Секретарь — stage 1 scaffold",
+  "workspaces": [
+    "apps/frontend",
+    "apps/backend",
+    "apps/worker"
+  ],
+  "scripts": {
+    "build": "npm run --workspaces build",
+    "typecheck": "npm run --workspaces typecheck",
+    "lint": "npm run --workspaces lint",
+    "test": "npm run --workspaces test",
+    "db:generate": "npm --workspace apps/backend run db:generate",
+    "db:migrate": "npm --workspace apps/backend run db:migrate",
+    "db:deploy": "npm --workspace apps/backend run db:deploy"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0"
+  }
+}
