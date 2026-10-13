@@ -1,134 +1,141 @@
-# QA REPORT — Assignment Lifecycle Release
+# QA REPORT — Assignment Lifecycle Release (Final)
 
 ## 1. Общая информация
 
-- Проект: AI-da-Secretary public WEB sandbox
-- Дата проверки: 2026-10-13 UTC
-- Плановый риск: **L3**, risk score **9/10** (ширина 2, неопределённость 1, impact 2, reversibility 2, system access 2)
-- QA level: **L3**; выполнен обязательный независимый статический review
-- Application repository: `AABrovarnik/ai-da-secretary-app`
-- Application branch: `codex/stage1-review-screen`
-- Source SHA: `292c1e8fb72d110745cf8523db4fb28ffb27a2be`
-- PR: [#3 — open, not merged](https://github.com/AABrovarnik/ai-da-secretary-app/pull/3)
-- Deployment repository/branch: `AABrovarnik/ai-da-secretary-sandbox-deploy`, `ai/deploy-image-only`
-- Deployment checkout HEAD at pre-check: `6d8e315729d925fdc65ba1e6c867efd67270d3d0`
-- Sandbox: `https://sandbox.xn--01-dlcyz9d7b.xn--p1ai/`
-- Academy: `https://academy.xn--01-dlcyz9d7b.xn--p1ai/`
-- OS user: `aidev`; `id -nG` in normal shell: `aidev users`; `sg docker` shell: group `docker` active
-- Global Docker context remained `rootless`; all target daemon operations explicitly used `docker --context default` inside `sg docker`
-- Target daemon: Docker 29.8.1, host `ams-1-vm-9ggk`, root `/var/lib/docker`
-- Compose project: `deploy`; services: `backend`, `frontend`, `postgres`
-- PLAN FACT: requested public sandbox deployment with persistent PostgreSQL, GHCR publication and forward-only production-data migration
+- Проект: AI-da-Secretary public WEB sandbox.
+- Дата: 2026-10-13 UTC.
+- Риск: **L3**, score **9/10**; затронуты публикация образов, production-like PostgreSQL migration и runtime.
+- QA level: **L3**, независимый статический review выполнен.
+- Application repository: AABrovarnik/ai-da-secretary-app.
+- Application source SHA для обоих образов: 292c1e8fb72d110745cf8523db4fb28ffb27a2be.
+- Source checkout для сборки: чистый detached worktree; обычный checkout не переключался и не reset-ился.
+- Application PR: [#3 — OPEN, не merged](https://github.com/AABrovarnik/ai-da-secretary-app/pull/3).
+- Deployment repository: AABrovarnik/ai-da-secretary-sandbox-deploy, branch ai/deploy-image-only.
+- Sandbox: https://sandbox.xn--01-dlcyz9d7b.xn--p1ai/.
+- Academy control: https://academy.xn--01-dlcyz9d7b.xn--p1ai/.
+- Target daemon: Docker 29.8.1, rootful default, host ams-1-vm-9ggk, Docker root /var/lib/docker; команды выполнялись через sg docker.
+- Compose project: deploy; сервисы: backend, frontend, postgres.
 
-## 2. Итог проверки
+## 2. Итог
 
-| № | Проверка | Ожидалось | Фактический результат | Статус |
-|---|---|---|---|---|
-| 1 | L3 group-shell / target Docker | `default` daemon доступен без смены global context | `sg docker` активирует группу; `docker --context default info` и `ps` успешны | PASS |
-| 2 | Application checkout / PR | Нужная ветка, точный SHA, PR открыт | Branch `codex/stage1-review-screen`, SHA совпадает, PR #3 OPEN, `mergedAt=null` | PASS |
-| 3 | Deployment checkout | Нужная ветка, чистое tracked состояние | Branch `ai/deploy-image-only`, tracked status clean; `.env.sandbox` mode 600 | PASS |
-| 4 | Source QA | Все заданные команды успешны | generate/typecheck/lint/test/build/diff-check exit 0; 18 тестов passed | PASS |
-| 5 | PostgreSQL + env backup | Dump и env backup mode 600 в `web-sandbox/backups` | Каталог отсутствует; `aidev` не может создать его в root-owned parent; `sudo -n` отказал. Ни одного backup-файла нет | FAIL — **P0** |
-| 6 | Images/migration/deploy/API | Новый immutable runtime и все acceptance проверки | Не выполнялись, остановка до любых изменений из-за отсутствия обязательного backup | NOT RUN |
-| 7 | Academy isolation | HTTP status до/после одинаков | HTTPS HEAD 200 до и после; конфиги/контейнеры/route не менялись | PASS |
+Runtime обновлён на образы, собранные из точного application SHA 292c1e8…. Forward-only миграция прошла, PostgreSQL и persistent volumes сохранены, API lifecycle/history и persistence после backend restart проверены.
 
-## 3. Source QA / command log
+**Release acceptance остаётся NOT READY по двум причинам:**
 
-| Команда | Exit code | Результат |
-|---|---:|---|
-| `sg docker -c 'id && docker --context default info && docker --context default ps'` | 0 | Target rootful daemon доступен; три целевых контейнера видны |
-| `gh pr view 3 --repo AABrovarnik/ai-da-secretary-app ...` | 0 | PR #3 OPEN, not merged, head SHA требуемый |
-| `git fetch --all --prune` + `git pull --ff-only` (application checkout) | 0 | Fast-forward `71f218d` → требуемый SHA |
-| `npm ci` | 0 | Установлено 370 packages; audit сообщил 6 advisories (3 moderate, 1 high, 2 critical) |
-| `npm run db:generate` | 0 | Prisma Client 5.22.0 сгенерирован |
-| `npm run typecheck` | 0 | Все workspaces прошли |
-| `npm run lint` | 0 | Все workspaces прошли |
-| `npm test` | 0 | Frontend 7 + backend 11 = 18 passed; worker: no test files, exit 0 |
-| `npm run build` | 0 | Frontend, backend, worker builds прошли |
-| `git diff --check` | 0 | Passed; application checkout после QA clean (tracked) |
-| `docker compose ... config` из deployment checkout | 0 | Старые refs и loopback bindings валидны; build sections отсутствуют |
-| `python backup preflight` | 1 | PermissionError при создании `/srv/ai-shared/web-sandbox/backups`; dump/env backup не создавались |
-| `sudo -n true` | 1 | Отказ sudo: пользователь `aidev` не имеет разрешённого non-interactive elevation |
+1. API принял невозможные dueDate=2026-02-31 и dueTime=29:99; дата нормализовалась в 2026-03-03, время сохранилось как 29:99. Это подтверждённая ошибка backend validation.
+2. Интерактивная визуальная проверка UI на desktop/360 px не завершена: OpenClaw browser включён, но browser executable/CDP недоступен. Новые frontend assets подтверждены через HTTPS, однако это не заменяет визуальный прогон.
 
-`npm ci` сообщил о deprecated dependencies и advisories; зависимости и lockfile не исправлялись в рамках этой задачи.
+- DEPLOY_READY=YES
+- API_ACCEPTANCE_READY=NO
+- UI_ACCEPTANCE=PARTIAL; VISUAL_BROWSER_CHECK=PENDING
+- OVERALL=NOT READY
+- Исправление требуется: **ДА** — календарная дата и время должны валидироваться семантически; добавить regression tests, затем выпустить следующий immutable image. В этом проходе исходники не исправлялись.
+- Merge выполнен: NO
 
-## 4. Baseline runtime и infrastructure
+## 3. Provenance и публикация образов
 
-### До любых runtime изменений
+| Сервис | Immutable tag | Registry digest | OCI revision |
+|---|---|---|---|
+| backend | ghcr.io/aabrovarnik/ai-da-secretary-backend:sha-292c1e8fb72d | sha256:027c66a98a41b9c421224d3ee61609eb53c1e21ad1e2382580ca6b88a081ce55 | 292c1e8fb72d110745cf8523db4fb28ffb27a2be |
+| frontend | ghcr.io/aabrovarnik/ai-da-secretary-frontend:sha-292c1e8fb72d | sha256:8b982232d754855b6c22de3d1aa072c91edeb81080587f5f15235555be7849dd | 292c1e8fb72d110745cf8523db4fb28ffb27a2be |
 
-- Backend container: `246f545651abdc942b261a643dd080b9622e3d70b87b2c64da305236a703fd87`
-- Frontend container: `ec356af93227ce0ff4f9535d5e19b0c09197dc15d9b150d278309861c63fcee0`
-- PostgreSQL container: `d9fc134d6ddf70aa083b94e09dd23aeb2de365f7f4b46019f2f478ab7e6331ca`
-- PostgreSQL volume: `deploy_sandbox-postgres-data` → `/var/lib/postgresql/data`
-- Old backend image/tag (rollback reference): `ghcr.io/aabrovarnik/ai-da-secretary-backend:sha-71f218dea7ec`
-- Old frontend image/tag (rollback reference): `ghcr.io/aabrovarnik/ai-da-secretary-frontend:sha-3861a8b91b7f`
-- Current env tags before/after: backend `sha-71f218dea7ec`, frontend `sha-3861a8b91b7f`
-- Existing bindings: backend `127.0.0.1:18081->4000/tcp`; frontend `127.0.0.1:18080->80/tcp`
-- Compose resolved refs: old tags above; build sections absent
+Evidence:
 
-### Baseline/post-stop HTTP checks
+- Clean detached source worktree HEAD exactly matched 292c1e8fb72d110745cf8523db4fb28ffb27a2be; worktree remained clean.
+- Backend and frontend buildx build --push завершились с exit 0.
+- У каждого образа OCI org.opencontainers.image.revision равен полному SHA.
+- Registry manifest inspection и pull завершились успешно; оба image — linux/amd64.
+- GHCR package versions для обоих tags созданы 2026-10-13 во время этой сборки; это не ранее существовавшие tags.
+- Frontend собран с VITE_API_BASE_URL=/api.
+- Build сообщил о 6 npm advisories (3 moderate, 1 high, 2 critical) и deprecated dependencies; lockfile/dependencies не менялись.
 
-| Request | Expected | Actual | Exit | Result |
-|---|---|---:|---:|---|
-| `GET http://127.0.0.1:18081/health` | 200, process/database ok | 200; JSON `status=ok`, both checks `ok=true` | 0 | PASS, baseline only |
-| `HEAD http://127.0.0.1:18080/` | 200 | 200 | 0 | PASS, baseline only |
-| `HEAD https://sandbox.xn--01-dlcyz9d7b.xn--p1ai/` without `-k` | 200 | 200 | 0 | PASS, baseline only |
-| `HEAD https://academy.xn--01-dlcyz9d7b.xn--p1ai/` without `-k`, before/after | unchanged | 200 / 200 | 0 / 0 | PASS |
-| TLS sandbox chain verification | Chain valid, SAN contains host | OpenSSL verify return code 0; SAN includes sandbox hostname | 0 | PASS, baseline only |
+## 4. Backup и конфигурация
 
-Post-stop check confirms the original PostgreSQL container ID and volume are unchanged. Existing backend/frontend tags, containers, health, and bindings remain as before. No migration, image pull/push, recreate, or data modification occurred.
+До миграции/deploy созданы и проверены:
 
-## 5. Backup, images, migration, API acceptance
+- Каталог /srv/ai-shared/web-sandbox/backups: owner aidev:aidev, mode 700.
+- Env backup: assignment-lifecycle-20261013T131903Z.env, mode 600, 905 bytes.
+- PostgreSQL custom logical dump: assignment-lifecycle-20261013T131903Z.postgres.dump, mode 600, 37,286 bytes; pg_restore --list exit 0.
+- SHA-256 dump: 7533e47a546fe08a74dcde957a76dc60aab19ea7fba3864220b467e876d871c3.
+- Секретные значения env не выводились и в отчёт не включены.
 
-- Required PostgreSQL dump: **not created**; required backup directory could not be created without root-owned-parent write access.
-- Required `.env.sandbox` backup: **not created**.
-- Target image refs (not built/pushed):
-  - `ghcr.io/aabrovarnik/ai-da-secretary-backend:sha-292c1e8fb72d`
-  - `ghcr.io/aabrovarnik/ai-da-secretary-frontend:sha-292c1e8fb72d`
-- Target digests: unavailable; images not built/pushed.
-- Migration `202610130003_assignment_history`: not applied.
-- Backend restart/migration logs: not applicable; no containers recreated.
-- Assignment API lifecycle/ownership/restart-persistence acceptance: not run; no synthetic accounts or records created.
-- API acceptance IDs/statuses: none.
+В активном /srv/ai-shared/web-sandbox/ai-da-secretary/deploy/.env.sandbox изменены только BACKEND_TAG и FRONTEND_TAG на sha-292c1e8fb72d; mode остался 600. Исходная копия env совпала с pre-deploy backup до редактирования.
 
-## 6. Независимый L3 review
+- docker compose config --quiet — exit 0.
+- Resolved images — только новые backend/frontend refs.
+- В deploy Compose для backend/frontend нет build-context; persistent volumes и loopback port bindings сохранены.
+- Tracked deployment checkout не изменён; исходный source branch и его история не reset-ились.
 
-Independent read-only review of exact source SHA found no release-blocking issue by static inspection.
+## 5. Миграция и runtime
 
-- **PASS:** migration/model alignment; authenticated assignment route; owner-scoped lookup; transactional update/history; no history row on a no-op update.
-- **WARNING:** date/time schema validation is shape-only; impossible values such as `2026-02-31` or `29:99` may pass parsing. Required runtime invalid-date acceptance remains unverified.
-- **WARNING:** concurrent assignment edits have no version precondition; history snapshots can become stale under simultaneous requests.
-- Review did not access runtime credentials or apply migrations/API calls.
+- Target daemon непосредственно перед изменением подтверждён: default, /var/lib/docker; исходные container IDs совпадали с pre-deploy baseline.
+- PostgreSQL container d9fc134d6ddf70aa083b94e09dd23aeb2de365f7f4b46019f2f478ab7e6331ca остался тем же и healthy.
+- Применена миграция 202610130003_assignment_history: создаёт таблицу AssignmentHistory, FK с ON DELETE CASCADE и индекс; не выполняет reset/drop.
+- Backend migration command сообщила All migrations have been successfully applied; после restart — No pending migrations to apply.
+- Пересозданы только backend и frontend, с --no-deps; PostgreSQL не пересоздавался.
+- Текущий backend container ID: a47dd1f262531a80254b229d450e4114d8d6e4254d3750295e0f7a77df3f3c7f; image ID соответствует backend registry digest.
+- Текущий frontend container ID: 50aebc12e82207ad8beaf2b2c31cab31ba887b5b8af1e3fc3348c0585cd12614; image ID соответствует frontend registry digest.
+- Persistent volumes остались: deploy_sandbox-postgres-data, deploy_sandbox-audio-data; удаление/пересоздание volumes не выполнялось.
+- Bindings подтверждены: backend 127.0.0.1:18081->4000, frontend 127.0.0.1:18080->80.
+- Backend health: HTTP 200; status=ok, DB check ok=true.
+- Sandbox HTTPS: HTTP 200 с проверяемым TLS.
+- Academy HTTPS: HTTP 200 до и после; Academy/Nginx/TLS конфигурация не менялась.
+- Новый frontend asset подтверждён по HTTPS: assets/index-BOrTmLwt.js (160,305 bytes), содержит lifecycle/history UI labels.
+- Временный migration-run container удалён (--rm); post-deploy осталось 0 таких контейнеров.
 
-## 7. UI boundary
+## 6. Runtime API acceptance
 
-- Browser tool status: enabled but not running (`running=false`, no CDP/browser executable detected).
-- Required release was not deployed, so desktop/360 px UI acceptance against the target runtime was not possible.
-- `UI_ACCEPTANCE=PENDING_CODEX`.
+Все записи создавались как синтетические fixtures с example.invalid; после проверок тестовые meetings/users удалены. Подтверждено, что synthetic accounts отсутствуют.
 
-## 8. Безопасность и границы изменений
+| Probe | Фактический результат | Статус |
+|---|---|---|
+| Регистрация и login двух synthetic owners | HTTP 201 / 200 | PASS |
+| Meetings API без токена | HTTP 401 | PASS |
+| Чужой owner читает meeting/patches assignment | HTTP 404 | PASS |
+| PATCH без токена | HTTP 401 | PASS |
+| Неверный status / неверное тело | HTTP 400 | PASS |
+| Assignment ID под другим meeting ID | HTTP 404 | PASS |
+| Candidate review с evidence чужой встречи | HTTP 400 | PASS |
+| Одобрение candidate | HTTP 200; создано 1 assignment и candidate history | PASS |
+| Повторное candidate review | HTTP 409 | PASS |
+| Owner меняет поручение и статус | HTTP 200; одна AssignmentHistory с changed fields | PASS |
+| Повтор того же PATCH | HTTP 200; дополнительная history row не создаётся | PASS |
+| Очистка nullable assignee/deadline полей | HTTP 200; поля стали null | PASS |
+| GET meeting возвращает историю | HTTP 200 | PASS |
+| Assignment и history после backend restart | HTTP 200; значения и history сохранились | PASS |
+| Невозможная дата 2026-02-31, время 29:99 | HTTP 200; дата сохранена как 2026-03-03, время как 29:99 | FAIL |
+| Очистка synthetic fixtures | 2 meetings + 2 users удалены; последующий fixture удалён; matching test accounts = 0 | PASS |
 
-- No secrets or full `.env.sandbox` values were printed or copied into this report.
-- No `.env.sandbox` values were changed.
-- No PostgreSQL data/volume was deleted, reset, or modified.
-- No Academy config/container/route was changed.
-- No Nginx, TLS, firewall, systemd, SSH, or system files were changed.
-- No rootless daemon containers/networks/volumes were created.
-- No release tag/latest was changed; no email was sent; PR was not merged.
+Проверки не запускали внешний AI/ASR, не отправляли email от synthetic users и не создавали реальных пользовательских записей.
 
-## 9. Проблема, следующий шаг и готовность
+**Независимый review** точного source SHA не выявил release-blocking проблем по migration/model alignment, auth/ownership и transactional history. Он предупреждал о shape-only validation для даты/времени и отсутствии optimistic concurrency. API probe подтвердил первую проблему. Конкурентные PATCH requests не проверялись; version precondition отсутствует.
 
-### Единственный ближайший P0
+## 7. UI acceptance boundary
 
-`/srv/ai-shared/web-sandbox` is `root:root` mode `755`; the requested `backups` child does not exist and `aidev` cannot create it. Non-interactive `sudo` is denied. Because PostgreSQL backup is a mandatory pre-deployment gate, work stopped before DB dump, image publication, migration, or runtime changes.
+- Browser status: enabled=true, running=false, detectedExecutablePath=null, CDP недоступен.
+- HTTPS root и JS/CSS assets нового frontend проверены; это доказывает выдачу собранного UI, но не визуальную/интерактивную корректность.
+- Desktop walkthrough, мобильная ширина 360 px, форма редактирования/история и сохранение через UI не проверены.
+- Поэтому VISUAL_BROWSER_CHECK=PENDING, без утверждения о полном UI acceptance.
 
-### Минимальное следующее действие
+## 8. Проверки исходников и границы изменений
 
-An administrator must create `/srv/ai-shared/web-sandbox/backups` owned by `aidev:aidev` with mode `700`, or the user must explicitly supply an approved alternate backup location. Then repeat backup validation before resuming the remaining authorized steps.
+Из предшествующего source QA на том же application SHA:
 
-- `DEPLOY_READY=NO`
-- `API_ACCEPTANCE_READY=NO`
-- `UI_ACCEPTANCE=PENDING_CODEX`
-- Общий статус: **NOT READY**
-- Исправление/действие требуется: **ДА** — обеспечить owner-only backup directory, затем продолжить задачу
-- Merge выполнен: **NO**
+- npm run db:generate, npm run typecheck, npm run lint, npm test, npm run build, git diff --check — exit 0.
+- Тесты: 18 passed (frontend 7, backend 11); worker не содержит test files, exit 0.
+- Production backend/frontend image builds также завершились успешно.
+- Затронутые продуктовые исходники не исправлялись в этом runtime проходе.
+- Nginx/TLS, Academy, firewall, systemd, SSH, PostgreSQL container/volume и app source branch не изменялись.
+- Application PR #3 остаётся OPEN; merge не выполнялся.
+
+## 9. Следующий шаг
+
+Исправить backend semantic validation:
+
+- отвергать даты, не существующие в календаре (включая 2026-02-31);
+- проверять диапазон времени (например, 00:00–23:59);
+- добавить regression/API tests;
+- повторить QA и независимый review;
+- выпустить новый immutable image из нового конкретного application commit и выполнить acceptance повторно.
+
+До отдельного разрешения на исправления текущий runtime оставлен на точном запрошенном SHA 292c1e8…; автоматический rollback не выполнялся.
