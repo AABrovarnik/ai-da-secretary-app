@@ -3,13 +3,23 @@ import { mkdir, rename } from "node:fs/promises";
 import { extname, resolve } from "node:path";
 import multer from "multer";
 import { Router } from "express";
-import { MaterialKind, ProcessingRunStatus } from "@prisma/client";
+import { CandidateReviewStatus, MaterialKind, Prisma, ProcessingRunStatus } from "@prisma/client";
 import { z } from "zod";
 import { appEnv } from "../../config/env.js";
 import { requireAuth } from "../../middleware/auth.js";
 import { prisma } from "../../services/db.js";
 import { runAiExtraction } from "../../services/ai/openaiAdapter.js";
 import { transcribeAudioFile } from "../../services/asr/openaiAsr.js";
+import {
+  buildAssignmentCreateData,
+  buildReviewedPayload,
+  candidateReviewRequestSchema
+} from "../../services/review/schema.js";
+import {
+  assignmentUpdateSchema,
+  buildAssignmentUpdateData,
+  changedAssignmentFields
+} from "../../services/assignments/schema.js";
 
 const meetingCreateSchema = z.object({
   title: z.string().min(1).max(250),
@@ -43,6 +53,26 @@ async function resolveOwnedMeeting(meetingId: string, ownerUserId: string) {
   return prisma.meeting.findFirst({
     where: { id: meetingId, ownerUserId }
   });
+}
+
+function assignmentHistorySnapshot(assignment: {
+  description: string;
+  assigneeName: string | null;
+  dueDate: Date | null;
+  dueTime: string | null;
+  timeZone: string | null;
+  dueDateRaw: string | null;
+  status: string;
+}) {
+  return {
+    description: assignment.description,
+    assigneeName: assignment.assigneeName,
+    dueDate: assignment.dueDate?.toISOString() ?? null,
+    dueTime: assignment.dueTime,
+    timeZone: assignment.timeZone,
+    dueDateRaw: assignment.dueDateRaw,
+    status: assignment.status
+  };
 }
 
 async function runPipelineForMaterial(input: {
@@ -159,11 +189,16 @@ meetingsApiRouter.get("/:meetingId", async (req, res) => {
       processingRuns: {
         orderBy: { queuedAt: "desc" },
         include: {
-          resultCandidates: true
+          resultCandidates: {
+            include: { history: { orderBy: { changedAt: "desc" } } }
+          }
         }
       },
-      decisions: true,
-      assignments: true
+      decisions: { orderBy: { createdAt: "desc" } },
+      assignments: {
+        orderBy: { createdAt: "desc" },
+        include: { history: { orderBy: { changedAt: "desc" } } }
+      }
     }
   });
 
@@ -382,6 +417,194 @@ meetingsApiRouter.post("/:meetingId/process-latest-audio", async (req, res) => {
   })();
 
   res.status(202).json({ runId: run.id, status: run.status });
+});
+
+meetingsApiRouter.put("/:meetingId/candidates/:candidateId/review", async (req, res) => {
+  const parsed = candidateReviewRequestSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const candidate = await prisma.resultCandidate.findFirst({
+    where: {
+      id: req.params.candidateId,
+      meetingId: req.params.meetingId,
+      meeting: { ownerUserId: req.authUserId }
+    }
+  });
+
+  if (!candidate) {
+    res.status(404).json({ error: "Candidate not found" });
+    return;
+  }
+
+  if (candidate.reviewStatus !== CandidateReviewStatus.pending) {
+    res.status(409).json({ error: "Candidate has already been reviewed" });
+    return;
+  }
+
+  const evidenceMaterialIds = Array.from(
+    new Set(
+      [parsed.data.decisions, parsed.data.assignments, parsed.data.questions, parsed.data.information]
+        .flat()
+        .flatMap((item) => item.evidence.map((evidence) => evidence.materialId))
+    )
+  );
+
+  const ownedMaterialCount = await prisma.material.count({
+    where: {
+      meetingId: candidate.meetingId,
+      id: { in: evidenceMaterialIds }
+    }
+  });
+
+  if (ownedMaterialCount !== evidenceMaterialIds.length) {
+    res.status(400).json({ error: "Review evidence references an unknown meeting material" });
+    return;
+  }
+
+  const approvedDecisions = parsed.data.decisions.filter((item) => item.action === "approve");
+  const approvedAssignments = parsed.data.assignments.filter((item) => item.action === "approve");
+  const approvedItemCount = [
+    ...approvedDecisions,
+    ...approvedAssignments,
+    ...parsed.data.questions.filter((item) => item.action === "approve"),
+    ...parsed.data.information.filter((item) => item.action === "approve")
+  ].length;
+  const nextStatus = approvedItemCount > 0 ? CandidateReviewStatus.approved : CandidateReviewStatus.rejected;
+  const reviewedPayload = buildReviewedPayload(parsed.data);
+
+  try {
+    const result = await prisma.$transaction(async (transaction) => {
+      const statusUpdate = await transaction.resultCandidate.updateMany({
+        where: { id: candidate.id, reviewStatus: CandidateReviewStatus.pending },
+        data: {
+          summary: parsed.data.summary,
+          payloadJson: reviewedPayload as Prisma.InputJsonValue,
+          reviewStatus: nextStatus,
+          reviewedAt: new Date()
+        }
+      });
+
+      if (statusUpdate.count !== 1) {
+        throw new Error("CANDIDATE_ALREADY_REVIEWED");
+      }
+
+      if (approvedDecisions.length > 0) {
+        await transaction.decision.createMany({
+          data: approvedDecisions.map((item) => ({
+            meetingId: candidate.meetingId,
+            text: item.text,
+            sourceQuote: item.evidence[0]?.quote ?? null
+          }))
+        });
+      }
+
+      if (approvedAssignments.length > 0) {
+        await transaction.assignment.createMany({
+          data: approvedAssignments.map((item) => buildAssignmentCreateData(candidate.meetingId, item))
+        });
+      }
+
+      await transaction.candidateHistory.create({
+        data: {
+          candidateId: candidate.id,
+          actorUserId: req.authUserId,
+          fromStatus: CandidateReviewStatus.pending,
+          toStatus: nextStatus,
+          comment:
+            parsed.data.comment ??
+            `Approved ${approvedItemCount}; rejected ${
+              parsed.data.decisions.length +
+              parsed.data.assignments.length +
+              parsed.data.questions.length +
+              parsed.data.information.length -
+              approvedItemCount
+            }`
+        }
+      });
+
+      return transaction.resultCandidate.findUnique({
+        where: { id: candidate.id },
+        include: { history: { orderBy: { changedAt: "desc" } } }
+      });
+    });
+
+    res.json({
+      item: result,
+      created: {
+        decisions: approvedDecisions.length,
+        assignments: approvedAssignments.length
+      }
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CANDIDATE_ALREADY_REVIEWED") {
+      res.status(409).json({ error: "Candidate has already been reviewed" });
+      return;
+    }
+    throw error;
+  }
+});
+
+meetingsApiRouter.patch("/:meetingId/assignments/:assignmentId", async (req, res) => {
+  const parsed = assignmentUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const assignment = await prisma.assignment.findFirst({
+    where: {
+      id: req.params.assignmentId,
+      meetingId: req.params.meetingId,
+      meeting: { ownerUserId: req.authUserId }
+    }
+  });
+
+  if (!assignment) {
+    res.status(404).json({ error: "Assignment not found" });
+    return;
+  }
+
+  const changes = buildAssignmentUpdateData(parsed.data);
+  const changedFields = changedAssignmentFields(assignment, changes);
+  if (changedFields.length === 0) {
+    const unchanged = await prisma.assignment.findUnique({
+      where: { id: assignment.id },
+      include: { history: { orderBy: { changedAt: "desc" } } }
+    });
+    res.json({ item: unchanged });
+    return;
+  }
+  const actualChanges = Object.fromEntries(
+    changedFields.map((field) => [field, changes[field as keyof typeof changes]])
+  ) as typeof changes;
+  const updated = await prisma.$transaction(async (transaction) => {
+    const item = await transaction.assignment.update({
+      where: { id: assignment.id },
+      data: actualChanges
+    });
+
+    await transaction.assignmentHistory.create({
+      data: {
+        assignmentId: assignment.id,
+        actorUserId: req.authUserId!,
+        changesJson: {
+          before: assignmentHistorySnapshot(assignment),
+          after: assignmentHistorySnapshot(item),
+          changedFields
+        }
+      }
+    });
+
+    return transaction.assignment.findUnique({
+      where: { id: assignment.id },
+      include: { history: { orderBy: { changedAt: "desc" } } }
+    });
+  });
+
+  res.json({ item: updated });
 });
 
 meetingsApiRouter.get("/processing/:runId", async (req, res) => {

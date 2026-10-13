@@ -1,6 +1,23 @@
 # Changelog
 
+## 2026-10-13
+- Fixed semantic deadline validation: impossible calendar dates and times outside `00:00–23:59` are now rejected during candidate review and confirmed-assignment updates.
+- Added the Stage 1 confirmed-assignment lifecycle:
+  - owner-only editing of description, assignee, deadline fields and status;
+  - all required statuses: `new`, `in_progress`, `done`, `cancelled`;
+  - transactional `AssignmentHistory` with actor, timestamp, before/after values and changed fields;
+  - forward-only database migration without resetting existing assignments;
+  - UI search, status filter, history view and time-zone-aware overdue indicator.
+- Added backend validation tests and frontend assignment presentation tests.
+
 ## 2026-10-11
+- Fixed sandbox API URL composition so a configured `/api` base no longer produces `/api/api/...` requests.
+- Fixed reviewed assignment deadlines: `dueTime` and `timeZone` now persist in `Assignment`, and confirmed results prefer the reviewed normalized deadline over stale AI `dueDateRaw` text.
+- Added the Stage 1 review workflow:
+  - editable AI candidate screen with per-item approve/reject actions;
+  - transactional creation of approved decisions and assignments;
+  - evidence ownership validation, review history and duplicate-review protection;
+  - confirmed-results view and reviewed-candidate archive.
 - Stabilized the backend container runtime on the sandbox host:
   - switched backend build/runtime images to `node:20-bookworm-slim`;
   - installed OpenSSL CA/runtime packages for Prisma;

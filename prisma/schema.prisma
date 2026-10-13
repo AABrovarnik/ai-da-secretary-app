@@ -146,15 +146,29 @@ model Assignment {
   description    String
   assigneeName   String?
   dueDate        DateTime?
+  dueTime        String?
+  timeZone       String?
   dueDateRaw     String?
   status         AssignmentStatus @default(new)
   sourceQuote    String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   meeting        Meeting         @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  history        AssignmentHistory[]
 
   @@index([meetingId])
   @@index([status])
+}
+
+model AssignmentHistory {
+  id           String   @id @default(cuid())
+  assignmentId String
+  actorUserId  String
+  changesJson  Json
+  changedAt    DateTime @default(now())
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
 }
 
 model CandidateHistory {
