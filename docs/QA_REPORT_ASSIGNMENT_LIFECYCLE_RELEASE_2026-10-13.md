@@ -139,3 +139,77 @@ Evidence:
 - выпустить новый immutable image из нового конкретного application commit и выполнить acceptance повторно.
 
 До отдельного разрешения на исправления текущий runtime оставлен на точном запрошенном SHA 292c1e8…; автоматический rollback не выполнялся.
+
+## 10. Follow-up — backend semantic deadline hotfix (2026-10-13)
+
+This section records the authorized follow-up and does not rewrite the original release FAIL in sections 2, 6, and 9. The earlier result remains as historical evidence; current backend-hotfix readiness is reported separately below.
+
+### Scope and provenance
+
+- Follow-up request: `TESLYA_TASK_DEADLINE_VALIDATION_FIX_2026-10-13.md`.
+- Application repository/branch: `AABrovarnik/ai-da-secretary-app`, `codex/stage1-review-screen`.
+- Exact application source SHA: `0d77ad06e2c6e772a6d9cc950acf0fe4ba8a40d3` (`fix: validate assignment deadlines semantically`).
+- Build source: clean detached worktree at that SHA; ordinary branch checkout was not used for the image build.
+- PR #3 remained OPEN during validation; merge was not performed.
+- Backend image: `ghcr.io/aabrovarnik/ai-da-secretary-backend:sha-0d77ad06e2c6`.
+- GHCR OCI index digest: `sha256:7b560f006c4af525b12d29e432b9ea77fb7a334e648af09c34d61a8c65b14fb8`.
+- `linux/amd64` platform manifest: `sha256:17893fa1a67f742ec78eac868ab428a235af0882e75814b79fdf6ec5ecccdbec`.
+- Pulled image OCI `org.opencontainers.image.revision` exactly matched the full required source SHA.
+- Rollback tag retained: `sha-292c1e8fb72d`.
+
+### Source QA
+
+Commands were run in the exact-SHA detached worktree:
+
+| Command | Exit/result |
+|---|---|
+| `npm ci` | 0; dependency audit reported 6 advisories (3 moderate, 1 high, 2 critical); no dependency changes were made |
+| `npm run db:generate` | 0 |
+| `npm run typecheck` | 0 |
+| `npm run lint` | 0 |
+| `npm test` | 0; 20 passed (frontend 7, backend 13); worker reported no test files and exited 0 |
+| `npm run build` | 0 |
+| `git diff --check` | 0 |
+
+An independent read-only L3 source review returned PASS: impossible calendar dates and out-of-range times are rejected by both assignment-update and candidate-review schemas before database mutation; ownership filtering remains intact. Low-priority edge warning: JavaScript `Date.UTC` treats years `0000`–`0099` specially, so these early years are rejected. This does not affect the required probes or ordinary modern deadlines and is not release-blocking for this hotfix.
+
+### Image build and backend-only deployment
+
+- `sg docker -c 'docker --context default buildx build --platform linux/amd64 --file docker/backend.Dockerfile --label org.opencontainers.image.revision=0d77ad06e2c6e772a6d9cc950acf0fe4ba8a40d3 --tag ghcr.io/aabrovarnik/ai-da-secretary-backend:sha-0d77ad06e2c6 --push .'` — exit 0.
+- `sg docker -c 'docker --context default buildx imagetools inspect ghcr.io/aabrovarnik/ai-da-secretary-backend:sha-0d77ad06e2c6'` — exit 0; registry digest and `linux/amd64` manifest recorded above.
+- `sg docker -c 'docker --context default pull ghcr.io/aabrovarnik/ai-da-secretary-backend:sha-0d77ad06e2c6'` and image inspection — exit 0; revision label matched the exact source SHA.
+- Pre-deploy rootful Docker `default` and Compose configuration were confirmed. `sg docker -c 'docker --context default compose --env-file deploy/.env.sandbox -f deploy/docker-compose.sandbox.yml config --quiet'` — exit 0; no Compose `build` sections. Resolved services were the new backend image, existing frontend tag `sha-292c1e8fb72d`, and `postgres:16-alpine`.
+- A pre-change copy of `deploy/.env.sandbox` was saved as `/srv/ai-shared/web-sandbox/backups/deadline-hotfix-20261013T133955Z.env`, mode `600`. A normalized comparison verified that only `BACKEND_TAG` changed; the active env file remained mode `600`. Secret values were not printed or recorded.
+- `sg docker -c 'docker --context default compose --env-file deploy/.env.sandbox -f deploy/docker-compose.sandbox.yml pull backend'` — exit 0.
+- `sg docker -c 'docker --context default compose --env-file deploy/.env.sandbox -f deploy/docker-compose.sandbox.yml up -d --no-deps --no-build --force-recreate backend'` — exit 0; no other service was recreated.
+- Backend startup and `sg docker -c 'docker --context default exec deploy-backend-1 npm run db:deploy'` both reported `No pending migrations to apply`; explicit check exit 0; no schema/data migration was applied.
+- Initial post-deploy backend health: HTTP 200 on first retry; process and database checks `ok=true`.
+- Runtime host checks after deployment/restart: localhost frontend HTTP 200; sandbox HTTPS HTTP 200; Academy HTTPS HTTP 200.
+
+### Runtime acceptance
+
+All probes used new synthetic `example.invalid` accounts and meetings. Tokens/passwords were excluded from output and report. The temporary fixture was removed after restart verification; the remaining matching synthetic-user count was 0.
+
+| Probe | Result |
+|---|---|
+| Owner A PATCH with `dueDate=2026-02-31` | HTTP 400; Assignment stayed unchanged; `AssignmentHistory` remained at 0 |
+| Owner A PATCH with `dueTime=29:99` | HTTP 400; Assignment stayed unchanged; `AssignmentHistory` remained at 0 |
+| Candidate review with impossible date | HTTP 400; Candidate remained `pending`; no Assignment was created |
+| Valid boundary PATCH `dueDate=2028-02-29`, `dueTime=23:59` | HTTP 200; stored as `2028-02-29T00:00:00.000Z` and `23:59`; exactly one history row created |
+| User B PATCH against Owner A's meeting/assignment | HTTP 404; data/history unchanged |
+| Backend-only restart and subsequent read | Health returned HTTP 200 on retry 3; valid boundary and the single history row persisted |
+| Fixture cleanup | 2 synthetic meetings and 2 synthetic users deleted; follow-up query found 0 matching synthetic users |
+
+### Preservation and final status
+
+- New backend container ID: `ac89514477efe82c5d952c27f4c94a3cbd60fe60c009c47293e221ec02c9c96e`; image tag/digest/revision match the requested hotfix.
+- Frontend container ID stayed `50aebc12e82207ad8beaf2b2c31cab31ba887b5b8af1e3fc3348c0585cd12614`; image remains `sha-292c1e8fb72d`.
+- PostgreSQL container ID stayed `d9fc134d6ddf70aa083b94e09dd23aeb2de365f7f4b46019f2f478ab7e6331ca`, healthy; volume `deploy_sandbox-postgres-data` unchanged.
+- Backend audio volume `deploy_sandbox-audio-data` unchanged. No volumes were removed or recreated.
+- Frontend, PostgreSQL, Academy, Nginx/TLS, ports, secrets, and deployment topology were not changed.
+- Pre-hotfix backend container ID: `a47dd1f262531a80254b229d450e4114d8d6e4254d3750295e0f7a77df3f3c7f`, using rollback image `sha-292c1e8fb72d`.
+- `sg docker -c 'docker --context default compose --env-file deploy/.env.sandbox -f deploy/docker-compose.sandbox.yml restart backend'` — exit 0; the restarted backend alone retained the validated assignment/history.
+- `BACKEND_FIX_READY=YES` — requested validation, persistence, ownership, health, and preservation acceptance passed.
+- `UI_ACCEPTANCE=PENDING_CODEX` — this backend-only follow-up did not perform a visual browser walkthrough; frontend was not changed.
+- Follow-up hotfix status: **READY**. This does not retroactively erase the initial release FAIL or claim visual UI acceptance.
+- PR #3 remains open; merge: NO. No email was sent.
