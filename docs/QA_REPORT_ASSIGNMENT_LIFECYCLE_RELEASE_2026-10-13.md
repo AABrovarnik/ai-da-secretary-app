@@ -213,3 +213,28 @@ All probes used new synthetic `example.invalid` accounts and meetings. Tokens/pa
 - `UI_ACCEPTANCE=PENDING_CODEX` — this backend-only follow-up did not perform a visual browser walkthrough; frontend was not changed.
 - Follow-up hotfix status: **READY**. This does not retroactively erase the initial release FAIL or claim visual UI acceptance.
 - PR #3 remains open; merge: NO. No email was sent.
+
+## 11. Codex visual UI acceptance (2026-10-13)
+
+Codex completed the browser walkthrough against the public HTTPS sandbox after the backend hotfix. The deployed frontend remained the previously accepted immutable image `sha-292c1e8fb72d`; no frontend deployment or infrastructure change was performed during this check.
+
+| UI probe | Result |
+|---|---|
+| Login with the existing sandbox demo account | PASS; meeting workspace loaded |
+| Real text processing | PASS; processing reached `succeeded`, one decision and one assignment candidate were displayed with evidence |
+| Human review completion | PASS; one Decision and one Assignment were created and shown in confirmed results |
+| Assignment editing | PASS; description and assignee edits persisted after refresh |
+| Status lifecycle UI | PASS; status changed from `new` to `in_progress` and persisted |
+| Assignment history | PASS; one entry displayed timestamp, actor ID and actual changed fields `description, assigneeName, status` |
+| Search empty state | PASS; unmatched query displayed `Поручения не найдены.` |
+| Status filter | PASS; `done` produced an empty result and `in_progress` restored the assignment |
+| Keyboard navigation | PASS; Tab from search moved focus to the status select |
+| Mobile width 360 px | PASS; `innerWidth=360`, document `scrollWidth=345`, assignment controls remained visible without horizontal overflow |
+| Desktop width 1280 px | PASS; workspace resolved to two columns `310px 816px`, controls and history remained visible |
+
+The sandbox demo meeting now contains one clearly synthetic UI-acceptance material, decision and assignment (`Подготовить финальный отчёт`, status `in_progress`). No automatic cleanup was attempted because the current product has no owner-facing delete endpoint and destructive database cleanup was outside this browser check.
+
+- `UI_ACCEPTANCE=YES`.
+- `BACKEND_FIX_READY=YES`.
+- Current assignment-lifecycle release acceptance: **READY**.
+- PR #3 remains open; merge: NO.
