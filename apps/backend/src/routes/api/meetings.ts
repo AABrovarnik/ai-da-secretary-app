@@ -15,6 +15,11 @@ import {
   buildReviewedPayload,
   candidateReviewRequestSchema
 } from "../../services/review/schema.js";
+import {
+  assignmentUpdateSchema,
+  buildAssignmentUpdateData,
+  changedAssignmentFields
+} from "../../services/assignments/schema.js";
 
 const meetingCreateSchema = z.object({
   title: z.string().min(1).max(250),
@@ -48,6 +53,26 @@ async function resolveOwnedMeeting(meetingId: string, ownerUserId: string) {
   return prisma.meeting.findFirst({
     where: { id: meetingId, ownerUserId }
   });
+}
+
+function assignmentHistorySnapshot(assignment: {
+  description: string;
+  assigneeName: string | null;
+  dueDate: Date | null;
+  dueTime: string | null;
+  timeZone: string | null;
+  dueDateRaw: string | null;
+  status: string;
+}) {
+  return {
+    description: assignment.description,
+    assigneeName: assignment.assigneeName,
+    dueDate: assignment.dueDate?.toISOString() ?? null,
+    dueTime: assignment.dueTime,
+    timeZone: assignment.timeZone,
+    dueDateRaw: assignment.dueDateRaw,
+    status: assignment.status
+  };
 }
 
 async function runPipelineForMaterial(input: {
@@ -170,7 +195,10 @@ meetingsApiRouter.get("/:meetingId", async (req, res) => {
         }
       },
       decisions: { orderBy: { createdAt: "desc" } },
-      assignments: { orderBy: { createdAt: "desc" } }
+      assignments: {
+        orderBy: { createdAt: "desc" },
+        include: { history: { orderBy: { changedAt: "desc" } } }
+      }
     }
   });
 
@@ -517,6 +545,66 @@ meetingsApiRouter.put("/:meetingId/candidates/:candidateId/review", async (req, 
     }
     throw error;
   }
+});
+
+meetingsApiRouter.patch("/:meetingId/assignments/:assignmentId", async (req, res) => {
+  const parsed = assignmentUpdateSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.flatten() });
+    return;
+  }
+
+  const assignment = await prisma.assignment.findFirst({
+    where: {
+      id: req.params.assignmentId,
+      meetingId: req.params.meetingId,
+      meeting: { ownerUserId: req.authUserId }
+    }
+  });
+
+  if (!assignment) {
+    res.status(404).json({ error: "Assignment not found" });
+    return;
+  }
+
+  const changes = buildAssignmentUpdateData(parsed.data);
+  const changedFields = changedAssignmentFields(assignment, changes);
+  if (changedFields.length === 0) {
+    const unchanged = await prisma.assignment.findUnique({
+      where: { id: assignment.id },
+      include: { history: { orderBy: { changedAt: "desc" } } }
+    });
+    res.json({ item: unchanged });
+    return;
+  }
+  const actualChanges = Object.fromEntries(
+    changedFields.map((field) => [field, changes[field as keyof typeof changes]])
+  ) as typeof changes;
+  const updated = await prisma.$transaction(async (transaction) => {
+    const item = await transaction.assignment.update({
+      where: { id: assignment.id },
+      data: actualChanges
+    });
+
+    await transaction.assignmentHistory.create({
+      data: {
+        assignmentId: assignment.id,
+        actorUserId: req.authUserId!,
+        changesJson: {
+          before: assignmentHistorySnapshot(assignment),
+          after: assignmentHistorySnapshot(item),
+          changedFields
+        }
+      }
+    });
+
+    return transaction.assignment.findUnique({
+      where: { id: assignment.id },
+      include: { history: { orderBy: { changedAt: "desc" } } }
+    });
+  });
+
+  res.json({ item: updated });
 });
 
 meetingsApiRouter.get("/processing/:runId", async (req, res) => {

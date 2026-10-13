@@ -1,7 +1,7 @@
 :root { color: #17211b; background: #f5f7f4; font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; font-synthesis: none; }
 * { box-sizing: border-box; }
 body { margin: 0; min-width: 320px; min-height: 100vh; }
-button, input, textarea { font: inherit; }
+button, input, textarea, select { font: inherit; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .6; }
 .app-shell { max-width: 1180px; margin: 0 auto; padding: 24px 18px 48px; }
@@ -17,8 +17,8 @@ button:disabled { cursor: not-allowed; opacity: .6; }
 .stack { display: grid; gap: 10px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 label { display: grid; gap: 6px; color: #405048; font-size: 13px; font-weight: 700; }
-input, textarea { width: 100%; border: 1px solid #cbd7d0; border-radius: 10px; padding: 10px 12px; color: #17211b; background: #fff; resize: vertical; }
-input:focus, textarea:focus, button:focus-visible { outline: 3px solid rgba(57, 128, 84, .22); outline-offset: 1px; }
+input, textarea, select { width: 100%; border: 1px solid #cbd7d0; border-radius: 10px; padding: 10px 12px; color: #17211b; background: #fff; resize: vertical; }
+input:focus, textarea:focus, select:focus, button:focus-visible { outline: 3px solid rgba(57, 128, 84, .22); outline-offset: 1px; }
 .primary-button, .secondary-button, .meeting-button, .action-button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 800; }
 .primary-button { background: #23683d; color: #fff; }
 .secondary-button { background: #e9f0eb; color: #254b35; }
@@ -58,4 +58,14 @@ input:focus, textarea:focus, button:focus-visible { outline: 3px solid rgba(57, 
 .archive-card { padding: 13px; border: 1px solid #dce4df; border-radius: 12px; background: #fafcfb; }
 .status-badge.approved { background: #dff2e4; color: #1d6535; }
 .status-badge.rejected { background: #fde3df; color: #8a2c20; }
+.assignment-card { display: grid; gap: 12px; padding: 15px; border: 1px solid #d7e1da; border-radius: 12px; background: #fbfcfb; }
+.assignment-fields { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 10px; }
+.assignment-filters { display: grid; grid-template-columns: minmax(0, 2fr) minmax(150px, 1fr); gap: 10px; }
+.status-badge.assignment-new { background: #e8eef9; color: #315887; }
+.status-badge.assignment-in_progress { background: #fff0c7; color: #775400; }
+.status-badge.assignment-done { background: #dff2e4; color: #1d6535; }
+.status-badge.assignment-cancelled { background: #eceeed; color: #566159; }
+.overdue-note { margin: 0; color: #a33629; font-weight: 800; }
+.history-list { margin: 0; padding-left: 20px; color: #66766c; font-size: 13px; }
 @media (max-width: 820px) { .workspace { grid-template-columns: 1fr; } .sidebar { position: static; } .field-grid, .confirmed-grid { grid-template-columns: 1fr; } .app-header { flex-direction: column; } }
+@media (max-width: 620px) { .assignment-fields, .assignment-filters { grid-template-columns: 1fr; } .assignment-card { padding: 12px; } }

@@ -74,6 +74,30 @@ export type ProcessingRun = {
 
 export type MeetingListItem = { id: string; title: string };
 
+export type AssignmentStatus = "new" | "in_progress" | "done" | "cancelled";
+
+export type Assignment = {
+  id: string;
+  description: string;
+  assigneeName: string | null;
+  dueDate: string | null;
+  dueTime: string | null;
+  timeZone: string | null;
+  dueDateRaw: string | null;
+  status: AssignmentStatus;
+  sourceQuote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  history: Array<{
+    id: string;
+    actorUserId: string;
+    changesJson: {
+      changedFields?: string[];
+    };
+    changedAt: string;
+  }>;
+};
+
 export type MeetingDetail = MeetingListItem & {
   materials: Array<{
     id: string;
@@ -89,16 +113,5 @@ export type MeetingDetail = MeetingListItem & {
     sourceQuote: string | null;
     createdAt: string;
   }>;
-  assignments: Array<{
-    id: string;
-    description: string;
-    assigneeName: string | null;
-    dueDate: string | null;
-    dueTime: string | null;
-    timeZone: string | null;
-    dueDateRaw: string | null;
-    status: "new" | "in_progress" | "done" | "cancelled";
-    sourceQuote: string | null;
-    createdAt: string;
-  }>;
+  assignments: Assignment[];
 };

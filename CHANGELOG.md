@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-10-13
+- Added the Stage 1 confirmed-assignment lifecycle:
+  - owner-only editing of description, assignee, deadline fields and status;
+  - all required statuses: `new`, `in_progress`, `done`, `cancelled`;
+  - transactional `AssignmentHistory` with actor, timestamp, before/after values and changed fields;
+  - forward-only database migration without resetting existing assignments;
+  - UI search, status filter, history view and time-zone-aware overdue indicator.
+- Added backend validation tests and frontend assignment presentation tests.
+
 ## 2026-10-11
 - Fixed sandbox API URL composition so a configured `/api` base no longer produces `/api/api/...` requests.
 - Fixed reviewed assignment deadlines: `dueTime` and `timeZone` now persist in `Assignment`, and confirmed results prefer the reviewed normalized deadline over stale AI `dueDateRaw` text.

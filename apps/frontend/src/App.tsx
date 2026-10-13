@@ -1,6 +1,7 @@
 import { ChangeEvent, FormEvent, useEffect, useMemo, useState } from "react";
 import { buildApiUrl } from "./apiUrl";
-import { formatAssignmentDeadline } from "./deadline";
+import { AssignmentList } from "./AssignmentList";
+import type { AssignmentUpdate } from "./AssignmentList";
 import { ReviewPanel } from "./ReviewPanel";
 import type { MeetingDetail, MeetingListItem, ProcessingRun, ResultCandidate, ReviewRequest } from "./types";
 
@@ -214,6 +215,19 @@ export function App() {
     });
   };
 
+  const updateAssignment = async (assignmentId: string, update: AssignmentUpdate) => {
+    if (!accessToken || !selectedMeetingId) return;
+    await withBusy(async () => {
+      await apiFetch(
+        `/api/meetings/${selectedMeetingId}/assignments/${assignmentId}`,
+        { method: "PATCH", body: JSON.stringify(update) },
+        accessToken
+      );
+      await loadMeeting(selectedMeetingId, accessToken);
+      setMessage("Поручение сохранено");
+    });
+  };
+
   return (
     <main className="app-shell">
       <header className="app-header">
@@ -293,10 +307,9 @@ export function App() {
             {meetingDetail && (meetingDetail.decisions.length > 0 || meetingDetail.assignments.length > 0) && (
               <section className="panel">
                 <h2>Подтверждённые результаты</h2>
-                <div className="confirmed-grid">
-                  <div><h3>Решения</h3><ul className="confirmed-list">{meetingDetail.decisions.map((item) => <li key={item.id}>{item.text}{item.sourceQuote && <div className="source-note">«{item.sourceQuote}»</div>}</li>)}</ul></div>
-                  <div><h3>Поручения</h3><ul className="confirmed-list">{meetingDetail.assignments.map((item) => <li key={item.id}>{item.description} · {item.assigneeName ?? "исполнитель не указан"} · {formatAssignmentDeadline(item)}<div className="source-note">Статус: {item.status}</div></li>)}</ul></div>
-                </div>
+                {meetingDetail.decisions.length > 0 && <div><h3>Решения</h3><ul className="confirmed-list">{meetingDetail.decisions.map((item) => <li key={item.id}>{item.text}{item.sourceQuote && <div className="source-note">«{item.sourceQuote}»</div>}</li>)}</ul></div>}
+                <h3>Поручения</h3>
+                <AssignmentList assignments={meetingDetail.assignments} busy={busy} onSave={updateAssignment} />
               </section>
             )}
 
