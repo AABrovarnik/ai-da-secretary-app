@@ -77,4 +77,27 @@ describe("candidate review contract", () => {
       dueDateRaw: "до пятницы"
     });
   });
+
+  it("rejects impossible reviewed deadlines", () => {
+    const assignment = {
+      action: "approve",
+      description: "Подготовить отчёт",
+      assigneeName: null,
+      dueDate: "2026-02-31",
+      dueTime: "29:99",
+      timeZone: "Europe/Moscow",
+      dueDateRaw: "к концу февраля",
+      needsReview: true,
+      evidence: [evidence]
+    };
+    const result = candidateReviewRequestSchema.safeParse({
+      summary: "Итоги",
+      decisions: [],
+      assignments: [assignment],
+      questions: [],
+      information: []
+    });
+
+    expect(result.success).toBe(false);
+  });
 });

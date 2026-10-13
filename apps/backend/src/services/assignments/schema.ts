@@ -1,14 +1,15 @@
 import { AssignmentStatus } from "@prisma/client";
 import { z } from "zod";
 import { assignmentDueDate } from "../review/schema.js";
+import { calendarDateSchema, clockTimeSchema } from "../validation/dateTime.js";
 
 const optionalNullableText = (max: number) => z.string().trim().min(1).max(max).nullable().optional();
 
 export const assignmentUpdateSchema = z.object({
   description: z.string().trim().min(1).max(4_000).optional(),
   assigneeName: optionalNullableText(250),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().optional(),
-  dueTime: z.string().regex(/^\d{2}:\d{2}$/).nullable().optional(),
+  dueDate: calendarDateSchema.nullable().optional(),
+  dueTime: clockTimeSchema.nullable().optional(),
   timeZone: optionalNullableText(80),
   dueDateRaw: optionalNullableText(250),
   status: z.nativeEnum(AssignmentStatus).optional()

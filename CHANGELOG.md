@@ -1,6 +1,7 @@
 # Changelog
 
 ## 2026-10-13
+- Fixed semantic deadline validation: impossible calendar dates and times outside `00:00–23:59` are now rejected during candidate review and confirmed-assignment updates.
 - Added the Stage 1 confirmed-assignment lifecycle:
   - owner-only editing of description, assignee, deadline fields and status;
   - all required statuses: `new`, `in_progress`, `done`, `cancelled`;

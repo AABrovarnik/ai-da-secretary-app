@@ -38,4 +38,10 @@ describe("assignment update contract", () => {
 
     expect(changedAssignmentFields(current, update)).toEqual(["status"]);
   });
+
+  it("rejects impossible calendar dates and clock times", () => {
+    expect(assignmentUpdateSchema.safeParse({ dueDate: "2026-02-31" }).success).toBe(false);
+    expect(assignmentUpdateSchema.safeParse({ dueTime: "29:99" }).success).toBe(false);
+    expect(assignmentUpdateSchema.safeParse({ dueDate: "2028-02-29", dueTime: "23:59" }).success).toBe(true);
+  });
 });

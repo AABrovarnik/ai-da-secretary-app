@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { calendarDateSchema, clockTimeSchema } from "../validation/dateTime.js";
 
 const reviewActionSchema = z.enum(["approve", "reject"]);
 
@@ -19,8 +20,8 @@ const reviewedAssignmentSchema = z.object({
   action: reviewActionSchema,
   description: z.string().min(1).max(4_000),
   assigneeName: z.string().min(1).max(250).nullable(),
-  dueDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable(),
-  dueTime: z.string().regex(/^\d{2}:\d{2}$/).nullable(),
+  dueDate: calendarDateSchema.nullable(),
+  dueTime: clockTimeSchema.nullable(),
   timeZone: z.string().min(1).max(80).nullable(),
   dueDateRaw: z.string().max(250).nullable(),
   needsReview: z.boolean(),
